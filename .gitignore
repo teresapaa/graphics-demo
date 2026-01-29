@@ -1,0 +1,21 @@
+# Build artifacts
+build/
+obj/
+*.o
+graphics-demo
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# macOS
+.DS_Store
