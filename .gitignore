@@ -15,7 +15,6 @@ graphics-demo
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-Makefile
 
 # macOS
 .DS_Store
