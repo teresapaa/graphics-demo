@@ -84,7 +84,7 @@ std::string Shader::loadShaderSource(const char* path) {
     std::stringstream buffer;
     
     if (!file.is_open()) {
-        std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ: " << path << std::endl;
+        std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << path << std::endl;
         return "";
     }
     

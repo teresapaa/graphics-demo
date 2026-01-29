@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cmath>
 #include <vector>
+#include <memory>
 
 // Simple matrix operations for transformations
 void mat4_identity(float* m) {
@@ -37,8 +38,9 @@ void mat4_translate(float* m, float x, float y, float z) {
 }
 
 Renderer::Renderer() : window(nullptr), currentMode(BALANCED), showStats(true), 
-                       VAO(0), VBO(0), EBO(0), rotation(0.0f), 
-                       lastTime(0.0), frameCount(0), fps(0.0) {
+                       windowWidth(800), windowHeight(600),
+                       VAO(0), VBO(0), EBO(0), indexCount(0), rotation(0.0f), 
+                       lastTime(0.0), frameCount(0), fps(0.0), cleanedUp(false) {
 }
 
 Renderer::~Renderer() {
@@ -46,6 +48,9 @@ Renderer::~Renderer() {
 }
 
 bool Renderer::initialize(int width, int height, const std::string& title) {
+    windowWidth = width;
+    windowHeight = height;
+    
     // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
@@ -72,6 +77,7 @@ bool Renderer::initialize(int width, int height, const std::string& title) {
     glfwMakeContextCurrent(window);
     glfwSetWindowUserPointer(window, this);
     glfwSetKeyCallback(window, keyCallback);
+    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
     
     // Initialize GLEW
     glewExperimental = GL_TRUE;
@@ -84,8 +90,9 @@ bool Renderer::initialize(int width, int height, const std::string& title) {
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     
-    // Setup geometry
+    // Setup geometry and shaders
     setupGeometry();
+    setupShaders();
     
     lastTime = glfwGetTime();
     
@@ -125,7 +132,9 @@ void Renderer::setupGeometry() {
             float nz = z - cz;
             
             float len = sqrt(nx*nx + ny*ny + nz*nz);
-            nx /= len; ny /= len; nz /= len;
+            if (len > 0.0001f) {
+                nx /= len; ny /= len; nz /= len;
+            }
             
             vertices.push_back(x);
             vertices.push_back(y);
@@ -152,6 +161,8 @@ void Renderer::setupGeometry() {
         }
     }
     
+    indexCount = indices.size();
+    
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -175,6 +186,13 @@ void Renderer::setupGeometry() {
     glBindVertexArray(0);
 }
 
+void Renderer::setupShaders() {
+    // Pre-compile all shaders
+    perfShader = std::unique_ptr<Shader>(new Shader("shaders/vertex.glsl", "shaders/fragment_perf.glsl"));
+    balancedShader = std::unique_ptr<Shader>(new Shader("shaders/vertex.glsl", "shaders/fragment_balanced.glsl"));
+    hqShader = std::unique_ptr<Shader>(new Shader("shaders/vertex.glsl", "shaders/fragment_hq.glsl"));
+}
+
 void Renderer::calculateFPS() {
     double currentTime = glfwGetTime();
     frameCount++;
@@ -190,67 +208,66 @@ void Renderer::render() {
     glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
-    // Select shader based on mode
-    const char* vertexShader = "shaders/vertex.glsl";
-    const char* fragmentShader;
-    
+    // Select shader based on mode (use pre-compiled shaders)
+    Shader* shader = nullptr;
     switch (currentMode) {
         case HIGH_QUALITY:
-            fragmentShader = "shaders/fragment_hq.glsl";
+            shader = hqShader.get();
             break;
         case BALANCED:
-            fragmentShader = "shaders/fragment_balanced.glsl";
+            shader = balancedShader.get();
             break;
         case PERFORMANCE:
-            fragmentShader = "shaders/fragment_perf.glsl";
+            shader = perfShader.get();
             break;
     }
     
-    Shader shader(vertexShader, fragmentShader);
-    shader.use();
+    if (!shader) return;
+    
+    shader->use();
     
     // Set up matrices
     float projection[16], model[16], view[16];
-    mat4_perspective(projection, 0.785f, 800.0f / 600.0f, 0.1f, 100.0f);
+    float aspectRatio = (float)windowWidth / (float)windowHeight;
+    mat4_perspective(projection, 0.785f, aspectRatio, 0.1f, 100.0f);
     mat4_translate(view, 0.0f, 0.0f, -3.0f);
     mat4_rotate_y(model, rotation);
     
-    shader.setMat4("projection", projection);
-    shader.setMat4("view", view);
-    shader.setMat4("model", model);
+    shader->setMat4("projection", projection);
+    shader->setMat4("view", view);
+    shader->setMat4("model", model);
     
     // Set lighting parameters
-    shader.setVec3("lightPos", 2.0f, 2.0f, 2.0f);
-    shader.setVec3("viewPos", 0.0f, 0.0f, 3.0f);
-    shader.setVec3("objectColor", 0.2f, 0.6f, 0.9f);
-    shader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+    shader->setVec3("lightPos", 2.0f, 2.0f, 2.0f);
+    shader->setVec3("viewPos", 0.0f, 0.0f, 3.0f);
+    shader->setVec3("objectColor", 0.2f, 0.6f, 0.9f);
+    shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
     
-    // Quality-specific parameters
-    switch (currentMode) {
-        case HIGH_QUALITY:
-            shader.setInt("qualityLevel", 3);
-            shader.setFloat("specularStrength", 0.8f);
-            shader.setInt("shininess", 64);
-            break;
-        case BALANCED:
-            shader.setInt("qualityLevel", 2);
-            shader.setFloat("specularStrength", 0.5f);
-            shader.setInt("shininess", 32);
-            break;
-        case PERFORMANCE:
-            shader.setInt("qualityLevel", 1);
-            shader.setFloat("specularStrength", 0.3f);
-            shader.setInt("shininess", 16);
-            break;
+    // Quality-specific parameters (only set for modes that use them)
+    if (currentMode != PERFORMANCE) {
+        switch (currentMode) {
+            case HIGH_QUALITY:
+                shader->setInt("qualityLevel", 3);
+                shader->setFloat("specularStrength", 0.8f);
+                shader->setInt("shininess", 64);
+                break;
+            case BALANCED:
+                shader->setInt("qualityLevel", 2);
+                shader->setFloat("specularStrength", 0.5f);
+                shader->setInt("shininess", 32);
+                break;
+            default:
+                break;
+        }
     }
     
     // Render torus
     glBindVertexArray(VAO);
-    glDrawElements(GL_TRIANGLES, 32 * 16 * 6, GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
     
-    // Update rotation
-    rotation += 0.01f;
+    // Update rotation with wrapping
+    rotation = fmod(rotation + 0.01f, 2.0f * 3.14159265359f);
 }
 
 void Renderer::updateUI() {
@@ -306,6 +323,13 @@ void Renderer::keyCallback(GLFWwindow* window, int key, int scancode, int action
     }
 }
 
+void Renderer::framebufferSizeCallback(GLFWwindow* window, int width, int height) {
+    Renderer* renderer = static_cast<Renderer*>(glfwGetWindowUserPointer(window));
+    renderer->windowWidth = width;
+    renderer->windowHeight = height;
+    glViewport(0, 0, width, height);
+}
+
 void Renderer::run() {
     std::cout << "\n=== AR Graphics Demo ===\n";
     std::cout << "Controls:\n";
@@ -327,12 +351,31 @@ void Renderer::run() {
 }
 
 void Renderer::cleanup() {
-    if (VAO) glDeleteVertexArrays(1, &VAO);
-    if (VBO) glDeleteBuffers(1, &VBO);
-    if (EBO) glDeleteBuffers(1, &EBO);
+    if (cleanedUp) return;  // Prevent double cleanup
+    
+    if (VAO) {
+        glDeleteVertexArrays(1, &VAO);
+        VAO = 0;
+    }
+    if (VBO) {
+        glDeleteBuffers(1, &VBO);
+        VBO = 0;
+    }
+    if (EBO) {
+        glDeleteBuffers(1, &EBO);
+        EBO = 0;
+    }
+    
+    // Reset shader pointers
+    perfShader.reset();
+    balancedShader.reset();
+    hqShader.reset();
     
     if (window) {
         glfwDestroyWindow(window);
+        window = nullptr;
         glfwTerminate();
     }
+    
+    cleanedUp = true;
 }

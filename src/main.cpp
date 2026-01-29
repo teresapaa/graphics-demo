@@ -13,7 +13,7 @@ int main() {
     }
     
     renderer.run();
-    renderer.cleanup();
+    // cleanup() is called in destructor, no need to call explicitly
     
     return 0;
 }
