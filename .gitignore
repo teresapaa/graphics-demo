@@ -16,5 +16,8 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 
+# CodeQL
+_codeql_*
+
 # macOS
 .DS_Store
