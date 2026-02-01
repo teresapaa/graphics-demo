@@ -28,3 +28,6 @@ Makefile
 # OS specific files
 .DS_Store
 Thumbs.db
+
+#Visual studio files
+*.vs
