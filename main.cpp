@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iomanip>
+
 
 // Function to load shader from file
 std::string loadShaderSource(const char* filepath) {
@@ -81,6 +83,12 @@ int main() {
         return -1;
     }
     glfwMakeContextCurrent(window);
+
+	// Disable vsync to measure max FPS and study performance trade-offs
+    glfwSwapInterval(0); // 0 = vsync off, 1 = vsync on 
+
+    double lastTime = glfwGetTime();
+	int nbFrames = 0;
     
     if (!gladLoadGL((GLADloadfunc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
@@ -91,7 +99,7 @@ int main() {
     glViewport(0, 0, 800, 600);
     
     // Create shader program
-    GLuint shaderProgram = createShaderProgram("vertex.glsl", "fragment.glsl");
+    GLuint shaderProgram = createShaderProgram("shaders/vertex.glsl", "shaders/fragment.glsl");
     
     // Define triangle vertices
     float vertices[] = {
@@ -126,6 +134,20 @@ int main() {
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         
+		// FPS calculation
+        nbFrames++;
+		double currentTime = glfwGetTime();
+
+        if (currentTime - lastTime >= 1.0) {
+            double fps = nbFrames / (currentTime - lastTime);
+            std::ostringstream title;
+			title << "Graphics Demo - FPS: " << std::fixed << std::setprecision(2) << fps;
+            glfwSetWindowTitle(window, title.str().c_str());
+            
+            nbFrames = 0;
+			lastTime = currentTime;
+        }
+
         // Swap buffers and poll events
         glfwSwapBuffers(window);
         glfwPollEvents();

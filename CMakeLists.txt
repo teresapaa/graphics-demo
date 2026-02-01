@@ -33,5 +33,14 @@ target_link_libraries(graphics_demo
 )
 
 # Copy shaders to build directory
-configure_file(vertex.glsl vertex.glsl COPYONLY)
-configure_file(fragment.glsl fragment.glsl COPYONLY)
+#configure_file(shaders/vertex.glsl vertex.glsl COPYONLY)
+#configure_file(shaders/fragment.glsl fragment.glsl COPYONLY)
+
+file(GLOB SHADER_FILES "${CMAKE_SOURCE_DIR}/shaders/*.glsl")
+
+foreach(shader ${SHADER_FILES})
+    add_custom_command(TARGET graphics_demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${shader}
+        $<TARGET_FILE_DIR:graphics_demo>)
+endforeach()
